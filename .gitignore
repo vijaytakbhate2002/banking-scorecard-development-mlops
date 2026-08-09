@@ -1,0 +1,8 @@
+*.zip
+*.csv
+*.xlsx
+*.xls
+*.gz
+*.env
+.env
+*.idea
