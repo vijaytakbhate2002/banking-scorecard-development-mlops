@@ -135,7 +135,6 @@ def predict(req: PredictionRequest):
 	probs = MODEL.predict_proba(X_woe)[:, 1]
 	preds = []
 	for p in probs:
-		# example score: map probability to 300-850 range (simple linear scaling)
 		score = float(round(p * 550 + 300, 2))
 		preds.append(PredictionItem(probability=float(p), score=score))
 
