@@ -6,14 +6,11 @@ from fastapi.testclient import TestClient
 import pandas as pd
 from sklearn.metrics import roc_auc_score
 
-# Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from app import app, startup_event
 
-# Create test client
 client = TestClient(app=app)
 
-# Manually trigger startup event to load model artifacts
 try:
     startup_event()
     print("✓ Model artifacts loaded successfully")
@@ -23,13 +20,11 @@ except Exception as e:
 TARGET = "default_status" # binary target for prediction (0 or 1)
 ROOT_DIR = Path(__file__).parent.parent / "model_development" / "data_processing" / "data" / "imp_features"
 
-# Load test data if available
 test_data_path = ROOT_DIR / "test_fi.csv"
 test_df = None
 if test_data_path.exists():
     test_df = pd.read_csv(test_data_path)
 
-# Sample payload for testing
 payload = {
     "records": [
         {
@@ -93,7 +88,6 @@ def test_predict_success():
         error_detail = response.json() if response.headers.get('content-type') == 'application/json' else response.text
         print(f"Error response: {error_detail}")
     
-    # If model not loaded, skip this test gracefully
     if response.status_code == 500:
         error_data = response.json()
         if "Model not loaded" in str(error_data.get("detail", "")):
@@ -120,7 +114,6 @@ def test_predict_empty_records():
     """Test prediction with empty records"""
     empty_payload = {"records": []}
     response = client.post("/predict", json=empty_payload)
-    # Server may return 400 or 500 depending on implementation
     assert response.status_code in [400, 500], f"Expected 400 or 500, got {response.status_code}"
     print("✓ Empty records validation passed")
 
@@ -132,13 +125,11 @@ def test_predict_missing_required_fields():
             {
                 "data": {
                     "issue_d": "2023-01-15"
-                    # Missing other required fields
                 }
             }
         ]
     }
     response = client.post("/predict", json=incomplete_payload)
-    # Should succeed with missing fields but use default/imputed values
     assert response.status_code in [200, 500]
     print("✓ Missing fields test passed")
 
@@ -149,10 +140,8 @@ def test_predict_from_test_data():
         print("⊘ Skipping test_predict_from_test_data: test_fi.csv not found")
         return
     
-    # Take first 2 rows from test data
     test_records = test_df.head(2).to_dict(orient="records")
     
-    # Replace NaN values with None for JSON serialization
     def replace_nan(d):
         return {k: (None if (isinstance(v, float) and pd.isna(v)) else v) for k, v in d.items()}
     
@@ -186,7 +175,6 @@ def test_auc_from_test_data():
     
     print(f"Computing AUC on {len(test_df)} records from test_fi.csv...")
     
-    # Replace NaN values with None for JSON serialization
     def replace_nan(d):
         return {k: (None if (isinstance(v, float) and pd.isna(v)) else v) for k, v in d.items()}
     
