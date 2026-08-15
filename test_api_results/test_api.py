@@ -15,7 +15,8 @@ try:
     startup_event()
     print("✓ Model artifacts loaded successfully")
 except Exception as e:
-    print(f"⚠ Failed to load model artifacts: {e}")
+    # print(f"⚠ Failed to load model artifacts: {e}")
+    raise RuntimeError(f"Failed to load model artifacts: {e}")
 
 TARGET = "default_status" # binary target for prediction (0 or 1)
 ROOT_DIR = Path(__file__).parent.parent
