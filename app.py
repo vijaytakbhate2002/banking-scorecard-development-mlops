@@ -81,7 +81,7 @@ def _make_woe_df(df: pd.DataFrame, top_features: List[str]):
 @app.on_event("startup")
 def startup_event():
 	global ARTIFACT_DIR, ART, MODEL, TOP_FEATURES, BINS, IMPUTE
-	dirs = list_artifact_dirs("model_development\\artifacts")
+	dirs = list_artifact_dirs("model_development/artifacts")
 	if not dirs:
 		raise RuntimeError("No artifact directories found under 'artifacts/'. Run training notebook first.")
 	ARTIFACT_DIR = dirs[-1]
