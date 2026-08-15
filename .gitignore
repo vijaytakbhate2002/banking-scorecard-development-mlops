@@ -9,3 +9,5 @@
 dev_env
 __pycache__
 !test_api_results/test_fi.csv
+!model_development/artifacts/
+!model_development/artifacts/**
