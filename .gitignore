@@ -7,3 +7,5 @@
 .env
 *.idea
 dev_env
+__pycache__
+!test_api_results/test_fi.csv

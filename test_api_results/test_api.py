@@ -18,10 +18,11 @@ except Exception as e:
     print(f"⚠ Failed to load model artifacts: {e}")
 
 TARGET = "default_status" # binary target for prediction (0 or 1)
-ROOT_DIR = Path(__file__).parent.parent / "model_development" / "data_processing" / "data" / "imp_features"
+ROOT_DIR = Path(__file__).parent.parent
 
-test_data_path = ROOT_DIR / "test_fi.csv"
+test_data_path = ROOT_DIR / "test_api_results" / "test_fi.csv"
 test_df = None
+print(f"Looking for test data at: {test_data_path}")
 if test_data_path.exists():
     test_df = pd.read_csv(test_data_path)
 
