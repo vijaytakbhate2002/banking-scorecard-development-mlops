@@ -79,7 +79,6 @@ notebook_shim==0.2.4
 notebook==7.6.1
 numba==0.66.0
 numpy==2.4.6
-numpy==2.5.1
 optbinning==0.20.0
 optuna==4.9.0
 ortools==9.15.6755
