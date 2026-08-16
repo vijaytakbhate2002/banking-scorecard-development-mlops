@@ -1,131 +1,181 @@
 # Credit Risk Scorecard — MLOps
 
-End-to-end credit risk scorecard development pipeline for Lending Club loan data. This repository documents each stage of model development, from raw data ingestion through deployment-ready artifacts.
+End-to-end credit risk scorecard development pipeline for Lending Club loan data. This project combines data preparation, leakage-safe feature engineering, model training, artifact packaging, and API deployment for a production-style credit risk scorecard.
 
 ---
 
 ## Repository Structure
 
-```
+```text
 credit_risk_scorecard_mlops/
+├── app.py                              # FastAPI scoring service
+├── requirements.txt                   # Python dependencies
 ├── model_development/
-│   └── data_processing/
-│       ├── data_collection.ipynb      # Download and store raw Lending Club data
-│       ├── feature_selection.ipynb    # Target definition, splits, and feature filtering
-│       └── data/
-│           ├── raw_data/              # Downloaded Kaggle dataset (gitignored)
-│           └── imp_features/          # Processed feature-selected datasets (gitignored)
-├── requirements.txt
-└── README.md
+│   ├── pd_model_training.ipynb        # Full model training pipeline
+│   ├── model_artifact_loader.py       # Loader for saved model artifacts
+│   ├── target_encoder.py              # Reusable target encoder implementation
+│   ├── data_processing/
+│   │   ├── data_collection.ipynb      # Download raw Lending Club data
+│   │   ├── feature_selection.ipynb    # Target creation, split logic, feature filtering
+│   │   └── data/
+│   │       ├── raw_data/              # Raw Kaggle files (gitignored)
+│   │       └── imp_features/          # Processed feature-selected datasets
+│   └── artifacts/                     # Saved trained model bundles
+├── test_api_results/
+│   └── test_api.py                    # API validation checks
+├── README.md
+└── .gitignore
 ```
 
 ---
 
-## Phase 1: Data Collection & Feature Selection
+## Data Pipeline Overview
 
 ### 1. Data Collection
 
-**Notebook:** `model_development/data_processing/data_collection.ipynb`
+Notebook: `model_development/data_processing/data_collection.ipynb`
 
-| Item | Detail |
-|------|--------|
-| **Source** | [Lending Club Loan Data](https://www.kaggle.com/datasets/wordsforthewise/lending-club) (`wordsforthewise/lending-club`) via `kagglehub` |
-| **Output path** | `model_development/data_processing/data/raw_data/` |
+This stage downloads accepted and rejected Lending Club datasets from Kaggle and stores them in `model_development/data_processing/data/raw_data/`.
 
-**Files downloaded:**
+### 2. Feature Selection and Splitting
 
-| File | Description |
-|------|-------------|
-| `accepted_2007_to_2018q4.csv` | Accepted loan applications (2007–2018 Q4) |
-| `accepted_2007_to_2018Q4.csv.gz` | Compressed accepted loans |
-| `rejected_2007_to_2018q4.csv` | Rejected loan applications (2007–2018 Q4) |
-| `rejected_2007_to_2018Q4.csv.gz` | Compressed rejected loans |
+Notebook: `model_development/data_processing/feature_selection.ipynb`
 
-The notebook downloads the dataset to a temporary Kaggle cache path and copies all files into the local `data/raw_data/` directory.
+The feature selection pipeline uses accepted loans only and creates the binary target `default_status`.
+
+- Good: `0`
+- Bad: `1`
+- Derived from `loan_status`
+- Post-target columns removed: `loan_status`, `id`
+- Temporal split by `issue_d` using a chronological train / validation / OOT design
+
+#### Final processed datasets in `imp_features/`
+
+| File             | Purpose                       |
+| ---------------- | ----------------------------- |
+| `full_df_fi.csv` | Full feature-selected dataset |
+| `train_fi.csv`   | 70% training set              |
+| `test_fi.csv`    | 15% validation set            |
+| `oot_fi.csv`     | 15% out-of-time holdout set   |
 
 ---
 
-### 2. Feature Selection
+## Major Model Development Fixes
 
-**Notebook:** `model_development/data_processing/feature_selection.ipynb`
+### 1. Leakage cleanup
 
-#### Dataset Overview
+The first major issue was a target leakage problem caused by post-disbursal information leaking into the training data. After ranking features by SHAP and coefficient gain, several suspicious post-disbursal variables were identified and removed from the training set.
 
-| Dataset | Rows | Columns |
-|---------|------|---------|
-| Accepted loans (`acc_df`) | 2,260,701 | 151 |
-| Rejected loans (`rej_df`) | 27,648,741 | 9 |
-| **Combined** | **29,909,442** | — |
+This corrected the feature set and produced a more trustworthy model signal. The original leakage-heavy version had an inflated, unrealistic AUC/Gini pattern before the cleanup.
 
-Feature selection is performed on **accepted loans only**.
+### 2. Target encoder block
 
-#### Target Variable
+After removing the leakage-causing variables, the model Gini dropped sharply, indicating the remaining feature set was still weak for a direct logistic scorecard. To fix that, a target encoding block was added using:
 
-Binary default flag derived from `loan_status`:
+- mean
+- std
+- count
+- skew
 
-| Label | `default_status` | Statuses |
-|-------|------------------|----------|
-| Good | `0` | Fully Paid; Does not meet the credit policy. Status:Fully Paid |
-| Bad | `1` | Charged Off; Default; Does not meet the credit policy. Status:Charged Off |
+This was applied to the categorical features before the WoE transformation stage. The encoder produces encoded categorical features that help preserve signal without leaking target information into the validation/test pipeline.
 
-Columns dropped after target creation: `loan_status`, `id`.
+### 3. AUC validation fix
 
-**Overall bad rate:** ~52.28%
+The original pytest logic used the first 200 rows of the validation dataset, which did not represent the overall behaviour of the real validation population. That created unstable and overly pessimistic AUC checks. The final validation check uses a representative sampled validation set (1000 rows) for AUC testing.
 
-#### Temporal Train / Validation / OOT Split
+### 4. PCA visualization
 
-Records are sorted by `issue_d` (ascending) and split chronologically to avoid look-ahead bias:
+A 3D PCA view was added to visualize default and non-default observations across the transformed feature space. This helps confirm that the scorecard features carry separable structure and supports model explainability.
 
-| Split | Share | Rows | Purpose |
-|-------|-------|------|---------|
-| **Train** | 70% | 1,582,467 | Model training |
-| **Validation (Test)** | 15% | 339,100 | Risk segment calculation |
-| **OOT (Out-of-Time)** | 15% | 339,101 | Final holdout evaluation |
+---
 
-Rows with null `issue_d` are removed before splitting (33 rows dropped).
+## Model Development Notebook
 
-#### Feature Selection Pipeline
+Notebook: `model_development/pd_model_training.ipynb`
 
-Features are filtered in four sequential stages:
+This notebook implements the full production-style pipeline:
 
-| Stage | Method | Threshold | Features In | Features Out | Dropped |
-|-------|--------|-----------|-------------|--------------|---------|
-| Initial | — | — | 149 | 149 | 0 |
-| 1. Fill Rate | Drop columns below fill-rate threshold | `< 5%` | 149 | 115 | 34 |
-| 2. Near-Zero Variance | Drop constant or near-constant columns | Top frequency ≥ 99% | 115 | 109 | 6 |
-| 3. Information Value (IV) | Optimal binning + WoE/IV via `optbinning` | IV ≥ 0.2 | 109 | 36 | 73 |
+1. Data read from `imp_features/`
+2. Date preprocessing and missing-value imputation
+3. Target leakage cleanup
+4. Categorical target encoding using the custom encoder
+5. WoE binning with `optbinning`
+6. Optuna search for logistic regression hyperparameters
+7. Final model training
+8. SHAP + coefficient gain ranking
+9. Top-5 feature selection
+10. AUC / KS analysis on train, validation, and OOT splits
+11. PCA visualization of defaulters vs non-defaulters
+12. Artifact export
 
-**Final survival rate:** 24.16% of original features (36 of 149).
+---
 
-**Near-zero variance features dropped:** `policy_code`, `pymnt_plan`, `hardship_flag`, `delinq_amnt`, `acc_now_delinq`, `chargeoff_within_12_mths`
+## Current Model Metrics
 
-**Top features by IV (selected):**
+The final trained model artifacts were saved under `model_development/artifacts/` and evaluated on the real validation and OOT splits.
 
-| Feature | IV |
-|---------|-----|
-| `next_pymnt_d` | 11.56 |
-| `last_pymnt_amnt` | 8.26 |
-| `emp_title` | 6.19 |
-| `last_pymnt_d` | 5.88 |
-| `total_rec_prncp` | 5.26 |
-| `issue_d` | 3.08 |
-| `last_credit_pull_d` | 2.41 |
-| `total_pymnt` | 2.25 |
-| `total_pymnt_inv` | 2.21 |
-| `inq_last_12m` | 1.77 |
+| Split      | AUC    | Gini   | KS     |
+| ---------- | ------ | ------ | ------ |
+| Train      | 0.6909 | 0.3817 | 0.2769 |
+| Validation | 0.7109 | 0.4218 | 0.3126 |
+| OOT        | 0.7012 | 0.4024 | 0.3046 |
 
-IV computation uses a stratified sample of up to **100,000** rows from the full accepted dataset.
+These values are the current benchmark from the notebook artifact export and reflect the leakage-safe, target-encoded model configuration.
 
-#### Output Artifacts
+> The model is not tuned to chase a near-perfect benchmark; the objective was to build a trustworthy, explainable scorecard with realistic, stable out-of-sample performance.
 
-Saved to `model_development/data_processing/data/imp_features/`:
+---
 
-| File | Description |
-|------|-------------|
-| `full_df_fi.csv` | Full accepted dataset with 36 selected features + target |
-| `train_fi.csv` | Training split (70%) |
-| `test_fi.csv` | Validation split (15%) |
-| `oot_fi.csv` | Out-of-time holdout split (15%) |
+## Artifact Bundle
+
+Each trained run is saved under a timestamped folder inside `model_development/artifacts/`.
+
+Files typically include:
+
+- `model_top5.joblib` — final trained logistic regression model
+- `target_encoder.joblib` — fitted target encoder used for categorical encoding
+- `impute_values.joblib` — train-fit imputation values
+- `top5_features.json` — selected top-5 feature list
+- `woe_features.json` — accepted WoE features for scoring
+- `metrics.json` — train / validation / OOT model performance
+- `metadata.json` — experiment metadata
+- `binners/` — persisted WoE binning objects
+
+---
+
+## API / Prediction Service
+
+The FastAPI app in `app.py` loads the latest artifact directory at startup and applies the same pipeline to new raw records:
+
+- date preprocessing
+- imputation using saved training statistics
+- target encoding using the saved encoder
+- WoE transformation using the saved binners
+- probability prediction using the trained scorecard model
+
+Run the API with:
+
+```bash
+uvicorn app:app --reload
+```
+
+Endpoints:
+
+- `GET /health`
+- `GET /metadata`
+- `POST /predict`
+
+---
+
+## Test Coverage
+
+The repository includes API validation checks in `test_api_results/test_api.py` to confirm:
+
+- app health is ok
+- metadata loads correctly
+- model artifacts load successfully
+- predictions return valid probabilities and scores
+- AUC validation matches the real validation distribution
 
 ---
 
@@ -134,33 +184,29 @@ Saved to `model_development/data_processing/data/imp_features/`:
 ### Prerequisites
 
 - Python 3.x
-- Kaggle account (for `kagglehub` dataset download)
+- `pip`
+- Access to Lending Club data source
 
-### Install Dependencies
+### Install dependencies
 
 ```bash
 pip install -r requirements.txt
-pip install optbinning
 ```
 
-> **Note:** `optbinning` is used in feature selection but is not yet listed in `requirements.txt`.
-
-### Run Notebooks
-
-Execute notebooks in order from the `model_development/data_processing/` directory:
-
-1. `data_collection.ipynb` — downloads and copies raw data
-2. `feature_selection.ipynb` — builds target, splits data, and exports feature-selected datasets
+This project also depends on libraries such as `optbinning`, `shap`, `optuna`, and `fastapi` as part of the training and serving flow.
 
 ---
 
-## Upcoming Phases
+## Current Status
 
-<!-- Add future pipeline stages below as they are completed -->
-
-| Phase | Status |
-|-------|--------|
-| Data Collection & Feature Selection | ✅ Complete |
-| Model Development | 🔲 Pending |
-| Scorecard Scaling & Calibration | 🔲 Pending |
-| MLOps / Deployment | 🔲 Pending |
+| Phase                               | Status      |
+| ----------------------------------- | ----------- |
+| Data collection                     | ✅ Complete |
+| Feature selection                   | ✅ Complete |
+| Leakage cleanup                     | ✅ Complete |
+| Target encoder feature engineering  | ✅ Complete |
+| Model training and evaluation       | ✅ Complete |
+| PCA visualization                   | ✅ Complete |
+| Model artifact saving               | ✅ Complete |
+| API deployment / prediction service | ✅ Complete |
+| Automated validation checks         | ✅ Complete |
