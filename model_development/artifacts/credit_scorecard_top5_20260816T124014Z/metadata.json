@@ -1,0 +1,11 @@
+{
+  "model_name": "credit_scorecard_top5",
+  "saved_at_utc": "20260816T124014Z",
+  "user": "admin",
+  "platform": "Windows-10-10.0.19045-SP0",
+  "python_version": "3.13.7",
+  "git_commit": "cd47e273365404ae6e3050798745314aef389279",
+  "num_train_rows": 349994,
+  "woe_features_count": 31,
+  "experiment_id": "lr_pd_model"
+}

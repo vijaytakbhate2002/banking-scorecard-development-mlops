@@ -1,0 +1,7 @@
+[
+  "total_rec_prncp",
+  "total_pymnt",
+  "last_pymnt_d",
+  "last_pymnt_amnt",
+  "max_bal_bc"
+]

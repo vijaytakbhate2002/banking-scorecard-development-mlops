@@ -1,0 +1,22 @@
+[
+  "emp_title",
+  "sub_grade",
+  "int_rate",
+  "grade",
+  "title",
+  "fico_range_high",
+  "fico_range_low",
+  "bc_open_to_buy",
+  "issue_d",
+  "all_util",
+  "open_rv_24m",
+  "max_bal_bc",
+  "mths_since_rcnt_il",
+  "il_util",
+  "open_acc_6m",
+  "inq_last_12m",
+  "total_bal_il",
+  "open_il_24m",
+  "open_rv_12m",
+  "open_act_il"
+]
