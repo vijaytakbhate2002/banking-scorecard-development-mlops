@@ -7,8 +7,12 @@
 .env
 *.idea
 dev_env
-__pycache__
+*__pycache__*
+__pycache__/**
+model_development/__pycache__/**
 !test_api_results/test_fi.csv
 !model_development/artifacts/
 !model_development/artifacts/**
 !verify_encoder_loader.py
+temp*
+*.pyc
