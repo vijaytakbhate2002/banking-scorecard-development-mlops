@@ -1,7 +1,13 @@
 import os
+import sys
 import joblib
 import json
 import pandas as pd
+
+try:
+    from model_development.target_encoder import TargetEncoderTransformer
+except Exception:
+    TargetEncoderTransformer = None
 
 
 def load_model_artifacts(artifact_dir: str) -> dict:
@@ -21,6 +27,7 @@ def load_model_artifacts(artifact_dir: str) -> dict:
     out = {
         "model": None,
         "impute_values": None,
+        "target_encoder": None,
         "binners": {},
         "top5_features": None,
         "woe_features": None,
@@ -39,6 +46,16 @@ def load_model_artifacts(artifact_dir: str) -> dict:
     impute_path = os.path.join(artifact_dir, "impute_values.joblib")
     if os.path.exists(impute_path):
         out["impute_values"] = joblib.load(impute_path)
+
+    encoder_path = os.path.join(artifact_dir, "target_encoder.joblib")
+    if os.path.exists(encoder_path):
+        try:
+            if TargetEncoderTransformer is not None:
+                sys.modules.setdefault("__main__", __import__("types").ModuleType("__main__"))
+                setattr(sys.modules["__main__"], "TargetEncoderTransformer", TargetEncoderTransformer)
+            out["target_encoder"] = joblib.load(encoder_path)
+        except Exception:
+            out["target_encoder"] = None
 
     binners_dir = os.path.join(artifact_dir, "binners")
     if os.path.isdir(binners_dir):

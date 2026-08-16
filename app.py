@@ -43,6 +43,7 @@ class PredictionResponse(BaseModel):
 ARTIFACT_DIR = None
 ART = {}
 MODEL = None
+TARGET_ENCODER = None
 TOP_FEATURES = []
 BINS = {}
 IMPUTE = {}
@@ -70,7 +71,10 @@ def _make_woe_df(df: pd.DataFrame, top_features: List[str]):
 	for col in top_features:
 		if col in BINS and BINS[col] is not None:
 			try:
-				out[col] = BINS[col].transform(df[col], metric="woe")
+				if col in df.columns:
+					out[col] = BINS[col].transform(df[col], metric="woe")
+				else:
+					out[col] = 0.0
 			except Exception:
 				out[col] = 0.0
 		else:
@@ -78,15 +82,28 @@ def _make_woe_df(df: pd.DataFrame, top_features: List[str]):
 	return out
 
 
+def _apply_target_encoder(df: pd.DataFrame) -> pd.DataFrame:
+	if TARGET_ENCODER is None or not hasattr(TARGET_ENCODER, "transform"):
+		return df
+	try:
+		encoded = TARGET_ENCODER.transform(df)
+		if encoded is not None:
+			return encoded
+	except Exception:
+		pass
+	return df
+
+
 @app.on_event("startup")
 def startup_event():
-	global ARTIFACT_DIR, ART, MODEL, TOP_FEATURES, BINS, IMPUTE
+	global ARTIFACT_DIR, ART, MODEL, TARGET_ENCODER, TOP_FEATURES, BINS, IMPUTE
 	dirs = list_artifact_dirs("model_development/artifacts")
 	if not dirs:
 		raise RuntimeError("No artifact directories found under 'artifacts/'. Run training notebook first.")
 	ARTIFACT_DIR = dirs[-1]
 	ART = load_model_artifacts(ARTIFACT_DIR)
 	MODEL = ART.get("model")
+	TARGET_ENCODER = ART.get("target_encoder")
 	TOP_FEATURES = ART.get("top5_features") or []
 	BINS = ART.get("binners") or {}
 	IMPUTE = ART.get("impute_values") or {}
@@ -113,23 +130,18 @@ def predict(req: PredictionRequest):
 		raise HTTPException(status_code=400, detail="No records provided")
 
 	df = pd.DataFrame(records)
-	# Ensure all required columns exist
 	df = preprocess_dates(df)
 
-	# Impute missing values using saved mapping
 	for col, val in IMPUTE.items():
 		if col in df.columns:
 			df[col] = df[col].fillna(val)
 		else:
 			df[col] = val
-		# keep categorical columns as string
 		if not pd.api.types.is_numeric_dtype(df[col]):
 			df[col] = df[col].astype(str)
 
-	# Build WoE features for top features
+	df = _apply_target_encoder(df)
 	X_woe = _make_woe_df(df, TOP_FEATURES)
-
-	# Align column order
 	X_woe = X_woe[TOP_FEATURES]
 
 	probs = MODEL.predict_proba(X_woe)[:, 1]

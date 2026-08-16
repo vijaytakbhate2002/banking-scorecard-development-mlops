@@ -8,6 +8,7 @@ from sklearn.metrics import roc_auc_score
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from app import app, startup_event
+from model_development.model_artifact_loader import load_model_artifacts
 
 client = TestClient(app=app)
 
@@ -79,6 +80,15 @@ def test_metadata():
     assert "top_features" in data
     print("✓ Metadata endpoint passed")
     print(f"  Top features: {data['top_features']}")
+
+
+def test_target_encoder_artifact_loaded():
+    """The trained artifact bundle should include the fitted target encoder."""
+    latest_dir = sorted(Path("model_development/artifacts").iterdir())[-1]
+    artifacts = load_model_artifacts(str(latest_dir))
+    assert artifacts.get("target_encoder") is not None
+    assert hasattr(artifacts["target_encoder"], "transform")
+    print("✓ Target encoder artifact loaded")
 
 
 def test_predict_success():
